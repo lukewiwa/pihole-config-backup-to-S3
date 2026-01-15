@@ -1,8 +1,31 @@
 {
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Infrastructure for Pi-hole configuration backup to S3",
   "Parameters": {
     "piholeBackupBucketName": {
       "Type": "String",
       "Description": "The name of the Amazon S3 bucket where uploaded files will be stored."
+    },
+    "BackupRetentionDays": {
+      "Type": "Number",
+      "Default": 30,
+      "Description": "Number of days to retain backup files before automatic deletion. Set to 0 to disable lifecycle policy.",
+      "MinValue": 0,
+      "MaxValue": 365
+    }
+  },
+  "Conditions": {
+    "HasLifecyclePolicy": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "BackupRetentionDays"
+            },
+            0
+          ]
+        }
+      ]
     }
   },
   "Resources": {
@@ -11,6 +34,50 @@
       "Properties": {
         "BucketName": {
           "Ref": "piholeBackupBucketName"
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        },
+        "LifecycleConfiguration": {
+          "Fn::If": [
+            "HasLifecyclePolicy",
+            {
+              "Rules": [
+                {
+                  "Id": "DeleteOldBackups",
+                  "Status": "Enabled",
+                  "ExpirationInDays": {
+                    "Ref": "BackupRetentionDays"
+                  }
+                },
+                {
+                  "Id": "DeleteOldVersions",
+                  "Status": "Enabled",
+                  "NoncurrentVersionExpirationInDays": {
+                    "Ref": "BackupRetentionDays"
+                  }
+                }
+              ]
+            },
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
         },
         "Tags": [
           {
@@ -33,66 +100,25 @@
         ]
       }
     },
-    "PiholeBackupUserDefaultPolicy": {
+    "PiholeBackupUserPolicy": {
       "Type": "AWS::IAM::Policy",
       "Properties": {
         "PolicyDocument": {
+          "Version": "2012-10-17",
           "Statement": [
             {
-              "Action": [
-                "s3:GetObject*",
-                "s3:GetBucket*",
-                "s3:List*"
-              ],
+              "Sid": "AllowBackupUpload",
               "Effect": "Allow",
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "PiholeBackupS3Bucket",
-                    "Arn"
-                  ]
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "PiholeBackupS3Bucket",
-                          "Arn"
-                        ]
-                      },
-                      "/*"
-                    ]
-                  ]
-                }
-              ]
-            },
-            {
               "Action": [
-                "s3:PutObject",
-                "s3:Abort*"
+                "s3:PutObject"
               ],
-              "Effect": "Allow",
               "Resource": {
-                "Fn::Join": [
-                  "",
-                  [
-                    {
-                      "Fn::GetAtt": [
-                        "PiholeBackupS3Bucket",
-                        "Arn"
-                      ]
-                    },
-                    "/*"
-                  ]
-                ]
+                "Fn::Sub": "${PiholeBackupS3Bucket.Arn}/*"
               }
             }
-          ],
-          "Version": "2012-10-17"
+          ]
         },
-        "PolicyName": "PiholeBackupUserDefaultPolicy",
+        "PolicyName": "PiholeBackupUploadOnly",
         "Users": [
           {
             "Ref": "PiholeBackupUser"
@@ -107,20 +133,52 @@
           "Ref": "PiholeBackupUser"
         }
       }
+    },
+    "PiholeBackupSecret": {
+      "Type": "AWS::SecretsManager::Secret",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "pihole-backup/${piholeBackupBucketName}/credentials"
+        },
+        "Description": "AWS credentials for Pi-hole backup service",
+        "SecretString": {
+          "Fn::Sub": "{\"access_key_id\":\"${PiholeBackupAccessKey}\",\"secret_access_key\":\"${PiholeBackupAccessKey.SecretAccessKey}\",\"bucket_name\":\"${piholeBackupBucketName}\",\"region\":\"${AWS::Region}\"}"
+        },
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "piholebackup"
+          }
+        ]
+      }
     }
   },
   "Outputs": {
-    "accessKeyId": {
+    "BucketName": {
+      "Description": "Name of the S3 bucket for backups",
       "Value": {
-        "Ref": "PiholeBackupAccessKey"
+        "Ref": "PiholeBackupS3Bucket"
       }
     },
-    "secretAccessKey": {
+    "BucketArn": {
+      "Description": "ARN of the S3 bucket",
       "Value": {
         "Fn::GetAtt": [
-          "PiholeBackupAccessKey",
-          "SecretAccessKey"
+          "PiholeBackupS3Bucket",
+          "Arn"
         ]
+      }
+    },
+    "SecretArn": {
+      "Description": "ARN of the Secrets Manager secret containing credentials. Retrieve with: aws secretsmanager get-secret-value --secret-id <SecretArn>",
+      "Value": {
+        "Ref": "PiholeBackupSecret"
+      }
+    },
+    "Region": {
+      "Description": "AWS region where resources are deployed",
+      "Value": {
+        "Ref": "AWS::Region"
       }
     }
   }

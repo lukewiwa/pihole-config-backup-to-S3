@@ -1,0 +1,28 @@
+[Unit]
+Description=Pi-hole Configuration Backup to S3
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pb2s3
+EnvironmentFile=/etc/pihole-backup/config
+
+# Security hardening
+NoNewPrivileges=false
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ReadWritePaths=/tmp
+
+# Allow pihole command to run (requires root for some operations)
+User=root
+Group=root
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pihole-backup
+
+[Install]
+WantedBy=multi-user.target
