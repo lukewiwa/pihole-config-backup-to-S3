@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Pi-hole backup daily
+
+[Timer]
+# Run daily at 3:00 AM
+OnCalendar=*-*-* 03:00:00
+# Add randomized delay up to 30 minutes to avoid thundering herd
+RandomizedDelaySec=1800
+# Run immediately if last scheduled run was missed (e.g., system was off)
+Persistent=true
+
+[Install]
+WantedBy=timers.target

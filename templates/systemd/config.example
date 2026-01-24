@@ -1,0 +1,15 @@
+# Pi-hole Backup to S3 Configuration
+# Copy this file to /etc/pihole-backup/config and fill in your values
+
+# Required: AWS credentials
+PB2S3_AWS_ACCESS_KEY=your-access-key-id
+PB2S3_AWS_SECRET_KEY=your-secret-access-key
+
+# Required: S3 bucket name
+PB2S3_AWS_BUCKET_NAME=your-bucket-name
+
+# Required: AWS region
+PB2S3_AWS_REGION=us-east-1
+
+# Optional: Custom S3 endpoint (for S3-compatible storage like MinIO)
+# PB2S3_S3_ENDPOINT=http://minio.local:9000
